@@ -504,8 +504,11 @@ class PimpBunnyIE(InfoExtractor):
                     fallback_player_config = _find_player_config(fallback_webpage)
                     if fallback_player_config and not _has_function_urls(fallback_player_config):
                         fallback_info = parse_pimpbunny_html(fallback_webpage, fallback_url)
-                        fallback_info["webpage_url"] = url
-                        fallback_info["original_url"] = url
-                        return fallback_info
+                        info["formats"] = fallback_info.get("formats") or info.get("formats")
+                        info["http_headers"] = fallback_info.get("http_headers") or info.get("http_headers")
+                        if fallback_info.get("thumbnail") and not info.get("thumbnail"):
+                            info["thumbnail"] = fallback_info["thumbnail"]
+                        info["original_url"] = url
+                        return info
 
         return info
