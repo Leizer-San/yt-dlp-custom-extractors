@@ -483,13 +483,42 @@ class PimpBunnyIE(InfoExtractor):
 
     def _real_extract(self, url):
         video_id = self._match_id(url)
+        match = self._match_valid_url(url)
+        requested_lang = match.group("lang") if match else None
+
         webpage = self._download_webpage(url, video_id)
         info = parse_pimpbunny_html(webpage, url)
+        source_url = url
+
+        if not requested_lang:
+            english_url = _with_locale_url(url, "en")
+            if english_url and english_url != url:
+                try:
+                    english_webpage = self._download_webpage(
+                        english_url,
+                        video_id,
+                        note="Downloading English metadata webpage",
+                        errnote=False,
+                        fatal=False,
+                    )
+                except Exception:
+                    english_webpage = None
+                if english_webpage:
+                    try:
+                        english_info = parse_pimpbunny_html(english_webpage, english_url)
+                    except ValueError:
+                        english_info = None
+                    if english_info:
+                        info = english_info
+                        webpage = english_webpage
+                        source_url = english_url
+                        info["webpage_url"] = url
+                        info["original_url"] = url
 
         player_config = _find_player_config(webpage)
         if _has_function_urls(player_config):
-            fallback_url = _with_locale_url(info.get("webpage_url") or url, "ru")
-            if fallback_url and fallback_url != (info.get("webpage_url") or url):
+            fallback_url = _with_locale_url(source_url, "ru")
+            if fallback_url and fallback_url != source_url:
                 try:
                     fallback_webpage = self._download_webpage(
                         fallback_url,
