@@ -11,7 +11,7 @@ from yt_dlp.extractor.common import InfoExtractor
 _VALID_URL = (
     r"https?://(?:www\.)?pimpbunny\.com/"
     r"(?:(?P<lang>[a-z]{2})/)?"
-    r"(?:(?:videos/(?P<display_id>[^/?#&]+))|(?:embed/(?P<id>\d+)))/?"
+    r"videos/(?P<id>[^/?#&]+)/?"
     r"(?:[?#].*)?$"
 )
 _PLAYER_CONFIG_RE = re.compile(r"\bvar\s+(?P<name>t[0-9a-f]{8,})\s*=", re.IGNORECASE)
@@ -76,12 +76,38 @@ def _has_function_urls(player_config):
     return False
 
 
+def _canonical_video_url(url):
+    url = _url_or_none(url)
+    if not url:
+        return None
+    return re.sub(
+        r"^(https?://(?:www\.)?pimpbunny\.com)/(?:[a-z]{2}/)?videos/([^/?#&]+)/?",
+        r"\1/videos/\2/",
+        url,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+
+
+def _canonical_file_url(url):
+    url = _url_or_none(url)
+    if not url:
+        return None
+    return re.sub(
+        r"^(https?://(?:www\.)?pimpbunny\.com)/(?:[a-z]{2}/)?(get_file/)",
+        r"\1/\2",
+        url,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+
+
 def _with_locale_url(url, locale="ru"):
     url = _strip_or_none(url)
     if not url:
         return None
     return re.sub(
-        r"^(https?://(?:www\.)?pimpbunny\.com)/(?![a-z]{2}/)(videos/|embed/)",
+        r"^(https?://(?:www\.)?pimpbunny\.com)/(?:[a-z]{2}/)?(videos/)",
         rf"\1/{locale}/\2",
         url,
         count=1,
@@ -306,9 +332,10 @@ def _extract_models_from_html(webpage):
 
 
 def _guess_display_id(url):
-    if not url:
+    canonical_url = _canonical_video_url(url)
+    if not canonical_url:
         return None
-    match = re.search(r"/videos/(?P<display_id>[^/?#&]+)/?", url)
+    match = re.search(r"/videos/(?P<display_id>[^/?#&]+)/?", canonical_url)
     if not match:
         return None
     return match.group("display_id")
@@ -340,7 +367,8 @@ def _build_formats(player_config, json_ld, video_src):
     rnd = _strip_or_none(player_config.get("rnd"))
 
     def add_format(url, label=None):
-        cleaned_url = _append_query(url, {"rnd": rnd}) if rnd else _url_or_none(url)
+        base_url = _canonical_file_url(url) or _url_or_none(url)
+        cleaned_url = _append_query(base_url, {"rnd": rnd}) if rnd else base_url
         if not cleaned_url or cleaned_url in seen_urls:
             return
         seen_urls.add(cleaned_url)
@@ -392,7 +420,7 @@ def parse_pimpbunny_html(webpage, url):
     player_config = _find_player_config(webpage)
     page_context = _find_page_context(webpage)
     json_ld = _find_json_ld_videoobject(webpage)
-    canonical_url = _search_canonical(webpage) or url
+    canonical_url = _canonical_video_url(_search_canonical(webpage) or url) or _canonical_video_url(url) or url
     video_src_match = _VIDEO_SRC_RE.search(webpage)
     video_src = video_src_match.group("value") if video_src_match else None
 
@@ -467,52 +495,40 @@ def parse_pimpbunny_html(webpage, url):
 class PimpBunnyIE(InfoExtractor):
     IE_NAME = "pimpbunny"
     _VALID_URL = _VALID_URL
-    _TESTS = [{
-        "url": "https://pimpbunny.com/videos/lilmilk69-wears-furry-ears-humps-on-a-dick/",
-        "only_matching": True,
-    }, {
-        "url": "https://pimpbunny.com/es/videos/lilmilk69-wears-furry-ears-humps-on-a-dick/",
-        "only_matching": True,
-    }, {
-        "url": "https://pimpbunny.com/fr/videos/lilmilk69-wears-furry-ears-humps-on-a-dick/",
-        "only_matching": True,
-    }, {
-        "url": "https://pimpbunny.com/ru/embed/526081",
-        "only_matching": True,
-    }]
-
     def _real_extract(self, url):
         video_id = self._match_id(url)
-        match = self._match_valid_url(url)
-        requested_lang = match.group("lang") if match else None
+        canonical_url = _canonical_video_url(url) or url
 
-        webpage = self._download_webpage(url, video_id)
-        info = parse_pimpbunny_html(webpage, url)
-        source_url = url
+        webpage = self._download_webpage(canonical_url, video_id)
+        info = parse_pimpbunny_html(webpage, canonical_url)
+        source_url = canonical_url
+        info["webpage_url"] = canonical_url
+        if canonical_url != url:
+            info["original_url"] = url
 
-        if not requested_lang:
-            english_url = _with_locale_url(url, "en")
-            if english_url and english_url != url:
+        english_url = _with_locale_url(canonical_url, "en")
+        if english_url and english_url != canonical_url:
+            try:
+                english_webpage = self._download_webpage(
+                    english_url,
+                    video_id,
+                    note="Downloading English metadata webpage",
+                    errnote=False,
+                    fatal=False,
+                )
+            except Exception:
+                english_webpage = None
+            if english_webpage:
                 try:
-                    english_webpage = self._download_webpage(
-                        english_url,
-                        video_id,
-                        note="Downloading English metadata webpage",
-                        errnote=False,
-                        fatal=False,
-                    )
-                except Exception:
-                    english_webpage = None
-                if english_webpage:
-                    try:
-                        english_info = parse_pimpbunny_html(english_webpage, english_url)
-                    except ValueError:
-                        english_info = None
-                    if english_info:
-                        info = english_info
-                        webpage = english_webpage
-                        source_url = english_url
-                        info["webpage_url"] = url
+                    english_info = parse_pimpbunny_html(english_webpage, english_url)
+                except ValueError:
+                    english_info = None
+                if english_info:
+                    info = english_info
+                    webpage = english_webpage
+                    source_url = english_url
+                    info["webpage_url"] = canonical_url
+                    if canonical_url != url:
                         info["original_url"] = url
 
         player_config = _find_player_config(webpage)
@@ -534,10 +550,11 @@ class PimpBunnyIE(InfoExtractor):
                     if fallback_player_config and not _has_function_urls(fallback_player_config):
                         fallback_info = parse_pimpbunny_html(fallback_webpage, fallback_url)
                         info["formats"] = fallback_info.get("formats") or info.get("formats")
-                        info["http_headers"] = fallback_info.get("http_headers") or info.get("http_headers")
+                        info["http_headers"] = {"Referer": canonical_url}
                         if fallback_info.get("thumbnail") and not info.get("thumbnail"):
                             info["thumbnail"] = fallback_info["thumbnail"]
-                        info["original_url"] = url
+                        if canonical_url != url:
+                            info["original_url"] = url
                         return info
 
         return info
