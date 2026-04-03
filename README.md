@@ -6,8 +6,6 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) extractor plugin for **PimpBunny**.
 
 - `https://pimpbunny.com/videos/<slug>/`
 - `https://pimpbunny.com/<lang>/videos/<slug>/`
-- `https://pimpbunny.com/embed/<id>/`
-- `https://pimpbunny.com/<lang>/embed/<id>/`
 
 ## Features
 
