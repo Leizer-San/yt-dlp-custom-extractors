@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+.idea/
+pimpbunny2_files/
+pimpbunny.html
