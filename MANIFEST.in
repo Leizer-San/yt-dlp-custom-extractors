@@ -9,6 +9,8 @@ prune venv
 prune .venv
 prune .idea
 prune pimpbunny2_files
+prune TransHub*_files
 global-exclude __pycache__
 global-exclude *.py[cod]
 exclude pimpbunny.html
+exclude TransHub*.html

@@ -1,11 +1,12 @@
-# yt-dlp-pimpbunny-extractor
+# yt-dlp extractor plugins
 
-A [yt-dlp](https://github.com/yt-dlp/yt-dlp) extractor plugin for **PimpBunny**.
+A [yt-dlp](https://github.com/yt-dlp/yt-dlp) extractor plugin package for **PimpBunny** and **TransHub**.
 
 ## Supported URLs
 
 - `https://pimpbunny.com/videos/<slug>/`
 - `https://pimpbunny.com/<lang>/videos/<slug>/`
+- `https://transhub.to/<category>/<slug>/`
 
 ## Features
 
@@ -13,6 +14,7 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) extractor plugin for **PimpBunny**.
 - Parses metadata: title, uploader/cast, thumbnail, description, duration, upload date, tags, categories
 - Handles geo-restricted `function/` URLs via locale fallback
 - Supports JSON-LD, player config, and OpenGraph metadata sources
+- Extracts TransHub embeds from LuluVdo/LuluStream iframe pages
 
 ## Installation
 
@@ -32,6 +34,10 @@ Download the latest release and place the `yt_dlp_plugins` folder in one of the 
 
 ```bash
 yt-dlp "https://pimpbunny.com/videos/example-video/"
+```
+
+```bash
+yt-dlp "https://transhub.to/anal/example-video/"
 ```
 
 ```bash

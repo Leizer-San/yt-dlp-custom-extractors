@@ -8,3 +8,5 @@ venv/
 .idea/
 pimpbunny2_files/
 pimpbunny.html
+TransHub*.html
+TransHub*_files/
