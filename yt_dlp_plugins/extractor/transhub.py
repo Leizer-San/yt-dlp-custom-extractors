@@ -12,7 +12,7 @@ _TRANSHUB_VALID_URL = (
     r"(?:[?#].*)?$"
 )
 _LULU_VALID_URL = (
-    r"https?://(?:www\.)?(?:luluvdo|lulustream)\.com/"
+    r"https?://(?:www\.)?(?:luluvdo|luluvid|lulustream)\.com/"
     r"(?:e|embed|v|d)/(?P<id>[A-Za-z0-9]+)"
 )
 _LULU_URL_RE = re.compile(_LULU_VALID_URL, re.IGNORECASE)

@@ -14,7 +14,7 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) extractor plugin package for **Pimp
 - Parses metadata: title, uploader/cast, thumbnail, description, duration, upload date, tags, categories
 - Handles geo-restricted `function/` URLs via locale fallback
 - Supports JSON-LD, player config, and OpenGraph metadata sources
-- Extracts TransHub embeds from LuluVdo/LuluStream iframe pages
+- Extracts TransHub embeds from LuluVdo/LuluVid/LuluStream iframe pages
 
 ## Installation
 

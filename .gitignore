@@ -10,3 +10,6 @@ pimpbunny2_files/
 pimpbunny.html
 TransHub*.html
 TransHub*_files/
+*.part
+*.part-*
+*.ytdl
