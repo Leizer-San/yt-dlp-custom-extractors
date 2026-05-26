@@ -12,10 +12,22 @@ _TRANSHUB_VALID_URL = (
     r"(?:[?#].*)?$"
 )
 _LULU_VALID_URL = (
-    r"https?://(?:www\.)?(?:luluvdo|luluvid|lulustream)\.com/"
+    r"https?://(?:www\.)?(?:luluvdo|luluvdoo|luluvid|lulustream)\.com/"
     r"(?:e|embed|v|d)/(?P<id>[A-Za-z0-9]+)"
 )
 _LULU_URL_RE = re.compile(_LULU_VALID_URL, re.IGNORECASE)
+_STREAMTAPE_VALID_URL = r"https?://(?:www\.)?streamtape\.com/(?:e|v)/(?P<id>[^/?#]+)"
+_STREAMTAPE_URL_RE = re.compile(_STREAMTAPE_VALID_URL, re.IGNORECASE)
+_STREAMTAPE_VIDEO_LINK_RE = re.compile(
+    r"<(?:div|span)[^>]+id=[\"'](?P<id>robotlink|botlink)[\"'][^>]*>(?P<url>//[^<]+)</",
+    re.IGNORECASE,
+)
+_STREAMTAPE_JS_LINK_RE = re.compile(
+    r"getElementById\([\"'](?P<id>robotlink|botlink)[\"']\)\.innerHTML\s*=\s*"
+    r"(?P<quote>[\"'])(?P<prefix>//[^\"']+)(?P=quote)\s*\+\s*(?:[\"'][\"']\s*\+\s*)?"
+    r"\([\"'](?P<suffix>[^\"']+)[\"']\)(?P<substrings>(?:\.substring\(\d+\))+)",
+    re.IGNORECASE,
+)
 _ATTR_RE = re.compile(
     r"(?P<name>[\w:-]+)\s*=\s*(?P<quote>[\"'])(?P<value>.*?)(?P=quote)",
     re.DOTALL,
@@ -119,16 +131,31 @@ def _search_canonical(webpage):
     return None
 
 
-def _extract_lulu_embed_url(webpage):
+def _is_supported_embed_url(url):
+    return bool(_LULU_URL_RE.match(url or "") or _STREAMTAPE_URL_RE.match(url or ""))
+
+
+def _guess_embed_id(url):
+    for pattern in (_LULU_URL_RE, _STREAMTAPE_URL_RE):
+        match = pattern.match(url or "")
+        if match:
+            return match.group("id")
+    return None
+
+
+def _extract_video_embed_url(webpage):
     for match in _IFRAME_RE.finditer(webpage):
         attrs = _extract_attrs(match.group("attrs"))
         for attr_name in ("data-litespeed-src", "data-src", "data-lazy-src", "src"):
             candidate = _url_or_none(attrs.get(attr_name))
-            if candidate and _LULU_URL_RE.match(candidate):
+            if candidate and _is_supported_embed_url(candidate):
                 return candidate
 
-    match = _LULU_URL_RE.search(webpage)
-    return match.group(0) if match else None
+    for pattern in (_LULU_URL_RE, _STREAMTAPE_URL_RE):
+        match = pattern.search(webpage)
+        if match:
+            return match.group(0)
+    return None
 
 
 def _parse_timestamp(value):
@@ -179,9 +206,9 @@ def _guess_section(url):
 def parse_transhub_html(webpage, url):
     canonical_url = _search_canonical(webpage) or url
     display_id = _guess_display_id(canonical_url) or _guess_display_id(url)
-    embed_url = _extract_lulu_embed_url(webpage)
+    embed_url = _extract_video_embed_url(webpage)
     if not embed_url:
-        raise ValueError("Could not find LuluVdo embed URL in TransHub page")
+        raise ValueError("Could not find video embed URL in TransHub page")
 
     title = (
         _search_entry_title(webpage)
@@ -198,7 +225,7 @@ def parse_transhub_html(webpage, url):
         or _section_to_category(_guess_section(canonical_url) or _guess_section(url))
     )
     info = {
-        "id": display_id or re.match(_LULU_VALID_URL, embed_url, re.IGNORECASE).group("id"),
+        "id": display_id or _guess_embed_id(embed_url),
         "display_id": display_id,
         "title": title,
         "description": (
@@ -244,6 +271,23 @@ def _extract_luluvdo_media(webpage):
     return urls
 
 
+def _extract_streamtape_video_url(webpage):
+    for match in _STREAMTAPE_VIDEO_LINK_RE.finditer(webpage):
+        video_url = _url_or_none(match.group("url"))
+        if video_url and "/get_video" in video_url:
+            return video_url
+
+    for match in _STREAMTAPE_JS_LINK_RE.finditer(webpage):
+        suffix = match.group("suffix")
+        for offset in re.findall(r"\.substring\((\d+)\)", match.group("substrings")):
+            suffix = suffix[int(offset):]
+        video_url = _url_or_none(f"{match.group('prefix')}{suffix}")
+        if video_url and "/get_video" in video_url:
+            return video_url
+
+    return None
+
+
 def parse_luluvdo_html(webpage, url):
     match = re.match(_LULU_VALID_URL, url, re.IGNORECASE)
     video_id = match.group("id") if match else None
@@ -280,14 +324,15 @@ class LuluVdoIE(InfoExtractor):
 
         formats = []
         headers = {"Referer": url}
-        for media_url in lulu_info.get("media_urls") or []:
+        media_urls = lulu_info.get("media_urls") or []
+        for media_url in media_urls:
             if ".m3u8" in media_url:
                 formats.extend(self._extract_m3u8_formats(
                     media_url,
                     video_id,
                     ext="mp4",
                     m3u8_id="hls",
-                    fatal=False,
+                    fatal=len(media_urls) == 1,
                     headers=headers,
                 ))
             else:
@@ -310,6 +355,49 @@ class LuluVdoIE(InfoExtractor):
         }
 
 
+class StreamtapeIE(InfoExtractor):
+    IE_NAME = "streamtape"
+    _VALID_URL = _STREAMTAPE_VALID_URL
+
+    def _real_extract(self, url):
+        video_id = self._match_id(url)
+        webpage = self._download_webpage(url, video_id)
+        video_url = _extract_streamtape_video_url(webpage)
+        if not video_url:
+            self.raise_no_formats("Could not find Streamtape video URL", expected=True)
+
+        title = (
+            _clean_title(_search_meta(webpage, "og:title"))
+            or _search_title(webpage)
+            or video_id
+        )
+        thumbnail = (
+            _url_or_none(_search_meta(webpage, "og:image"))
+            or _url_or_none(_search_meta(webpage, "twitter:image"))
+            or _url_or_none(self._search_regex(
+                r"<video[^>]+poster=[\"'](?P<url>[^\"']+)",
+                webpage,
+                "thumbnail",
+                group="url",
+                default=None,
+            ))
+        )
+        headers = {"Referer": url}
+
+        return {
+            "id": video_id,
+            "title": title,
+            "thumbnail": thumbnail,
+            "formats": [{
+                "url": video_url,
+                "format_id": "http",
+                "ext": "mp4",
+                "http_headers": headers,
+            }],
+            "http_headers": headers,
+        }
+
+
 class TransHubIE(InfoExtractor):
     IE_NAME = "transhub"
     _VALID_URL = _TRANSHUB_VALID_URL
@@ -323,6 +411,9 @@ class TransHubIE(InfoExtractor):
         info.update({
             "_type": "url_transparent",
             "url": embed_url,
-            "ie_key": LuluVdoIE.ie_key(),
         })
+        if _LULU_URL_RE.match(embed_url):
+            info["ie_key"] = LuluVdoIE.ie_key()
+        elif _STREAMTAPE_URL_RE.match(embed_url):
+            info["ie_key"] = StreamtapeIE.ie_key()
         return info
