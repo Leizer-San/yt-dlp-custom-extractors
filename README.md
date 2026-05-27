@@ -14,11 +14,19 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) extractor plugin package for **Pimp
 - Parses metadata: title, uploader/cast, thumbnail, description, duration, upload date, tags, categories
 - Handles geo-restricted `function/` URLs via locale fallback
 - Supports JSON-LD, player config, and OpenGraph metadata sources
-- Extracts TransHub embeds from LuluVdo/LuluVdoo/LuluVid/LuluStream and Streamtape iframe pages
+- Extracts TransHub embeds from LuluVdo/LuluVdoo/LuluVid/LuluStream, Streamtape, and Dooodster iframe pages
 
 ## Installation
 
 Requires **yt-dlp** `2023.01.02` or above.
+
+Some TransHub pages use Dooodster embeds protected by Cloudflare. The pip install includes a yt-dlp-compatible
+`curl-cffi` version automatically. If you install the plugin manually by copying files, install it in the same
+environment too:
+
+```bash
+python -m pip install -U "curl-cffi>=0.10,<0.15"
+```
 
 ### pip (recommended)
 

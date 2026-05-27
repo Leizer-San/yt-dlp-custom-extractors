@@ -1,6 +1,10 @@
+import random
 import re
+import string
+import time
 from datetime import datetime, timezone
 from html import unescape
+from urllib.parse import urljoin
 
 from yt_dlp.extractor.common import InfoExtractor
 from yt_dlp.utils import decode_packed_codes, float_or_none
@@ -18,6 +22,8 @@ _LULU_VALID_URL = (
 _LULU_URL_RE = re.compile(_LULU_VALID_URL, re.IGNORECASE)
 _STREAMTAPE_VALID_URL = r"https?://(?:www\.)?streamtape\.com/(?:e|v)/(?P<id>[^/?#]+)"
 _STREAMTAPE_URL_RE = re.compile(_STREAMTAPE_VALID_URL, re.IGNORECASE)
+_DOODSTER_VALID_URL = r"https?://(?:www\.)?dooodster\.com/(?:e|d)/(?P<id>[^/?#]+)"
+_DOODSTER_URL_RE = re.compile(_DOODSTER_VALID_URL, re.IGNORECASE)
 _STREAMTAPE_VIDEO_LINK_RE = re.compile(
     r"<(?:div|span)[^>]+id=[\"'](?P<id>robotlink|botlink)[\"'][^>]*>(?P<url>//[^<]+)</",
     re.IGNORECASE,
@@ -55,6 +61,8 @@ _MEDIA_URL_RE = re.compile(
 )
 _JW_IMAGE_RE = re.compile(r"\bimage\s*:\s*[\"'](?P<url>https?://[^\"']+)", re.IGNORECASE)
 _JW_DURATION_RE = re.compile(r"\bduration\s*:\s*[\"']?(?P<value>\d+(?:\.\d+)?)", re.IGNORECASE)
+_DOODSTER_PASS_MD5_RE = re.compile(r"(?P<url>/pass_md5/[^\"'<>\\\s]+)", re.IGNORECASE)
+_DOODSTER_TOKEN_RE = re.compile(r"[?&]token=(?P<token>[A-Za-z0-9]+)", re.IGNORECASE)
 
 
 def _strip_or_none(value):
@@ -132,11 +140,15 @@ def _search_canonical(webpage):
 
 
 def _is_supported_embed_url(url):
-    return bool(_LULU_URL_RE.match(url or "") or _STREAMTAPE_URL_RE.match(url or ""))
+    return bool(
+        _LULU_URL_RE.match(url or "")
+        or _STREAMTAPE_URL_RE.match(url or "")
+        or _DOODSTER_URL_RE.match(url or "")
+    )
 
 
 def _guess_embed_id(url):
-    for pattern in (_LULU_URL_RE, _STREAMTAPE_URL_RE):
+    for pattern in (_LULU_URL_RE, _STREAMTAPE_URL_RE, _DOODSTER_URL_RE):
         match = pattern.match(url or "")
         if match:
             return match.group("id")
@@ -151,7 +163,7 @@ def _extract_video_embed_url(webpage):
             if candidate and _is_supported_embed_url(candidate):
                 return candidate
 
-    for pattern in (_LULU_URL_RE, _STREAMTAPE_URL_RE):
+    for pattern in (_LULU_URL_RE, _STREAMTAPE_URL_RE, _DOODSTER_URL_RE):
         match = pattern.search(webpage)
         if match:
             return match.group(0)
@@ -398,6 +410,77 @@ class StreamtapeIE(InfoExtractor):
         }
 
 
+class DoodsterIE(InfoExtractor):
+    IE_NAME = "doodster"
+    _VALID_URL = _DOODSTER_VALID_URL
+
+    def _real_extract(self, url):
+        video_id = self._match_id(url)
+        embed_url = re.sub(r"/d/", "/e/", url)
+        headers = {"Referer": "https://transhub.to/"}
+        webpage = self._download_webpage(
+            embed_url,
+            video_id,
+            headers=headers,
+            impersonate=True,
+            require_impersonation=True,
+        )
+
+        pass_md5_url = self._search_regex(
+            _DOODSTER_PASS_MD5_RE,
+            webpage,
+            "Doodster pass_md5 URL",
+            group="url",
+        )
+        token_match = _DOODSTER_TOKEN_RE.search(pass_md5_url) or _DOODSTER_TOKEN_RE.search(webpage)
+        token = token_match.group("token") if token_match else None
+
+        expiry = str(int(time.time() * 1000))
+        pass_md5_url = urljoin(embed_url, unescape(pass_md5_url))
+        if pass_md5_url.endswith("expiry="):
+            pass_md5_url += expiry
+
+        video_url_base = self._download_webpage(
+            pass_md5_url,
+            video_id,
+            note="Downloading Doodster video URL",
+            headers={"Referer": embed_url},
+            impersonate=True,
+            require_impersonation=True,
+        ).strip()
+        video_url_base = _url_or_none(video_url_base) or urljoin(embed_url, video_url_base)
+
+        query = f"expiry={expiry}"
+        if token:
+            query = f"token={token}&{query}"
+        video_url = f"{video_url_base}{''.join(random.choices(string.ascii_letters + string.digits, k=10))}?{query}"
+
+        title = (
+            _clean_title(_search_meta(webpage, "og:title"))
+            or _search_title(webpage)
+            or video_id
+        )
+        thumbnail = (
+            _url_or_none(_search_meta(webpage, "og:image"))
+            or _url_or_none(_search_meta(webpage, "twitter:image"))
+        )
+        media_headers = {"Referer": embed_url}
+
+        return {
+            "id": video_id,
+            "title": title,
+            "thumbnail": thumbnail,
+            "formats": [{
+                "url": video_url,
+                "format_id": "http",
+                "ext": "mp4",
+                "http_headers": media_headers,
+                "impersonate": True,
+            }],
+            "http_headers": media_headers,
+        }
+
+
 class TransHubIE(InfoExtractor):
     IE_NAME = "transhub"
     _VALID_URL = _TRANSHUB_VALID_URL
@@ -416,4 +499,6 @@ class TransHubIE(InfoExtractor):
             info["ie_key"] = LuluVdoIE.ie_key()
         elif _STREAMTAPE_URL_RE.match(embed_url):
             info["ie_key"] = StreamtapeIE.ie_key()
+        elif _DOODSTER_URL_RE.match(embed_url):
+            info["ie_key"] = DoodsterIE.ie_key()
         return info
