@@ -22,7 +22,10 @@ _LULU_VALID_URL = (
 _LULU_URL_RE = re.compile(_LULU_VALID_URL, re.IGNORECASE)
 _STREAMTAPE_VALID_URL = r"https?://(?:www\.)?streamtape\.com/(?:e|v)/(?P<id>[^/?#]+)"
 _STREAMTAPE_URL_RE = re.compile(_STREAMTAPE_VALID_URL, re.IGNORECASE)
-_DOODSTER_VALID_URL = r"https?://(?:www\.)?dooodster\.com/(?:e|d)/(?P<id>[^/?#]+)"
+_DOODSTER_VALID_URL = (
+    r"https?://(?:www\.)?(?:dooodster|vidply|playmogo)\.com/"
+    r"(?:e|d)/(?P<id>[^/?#]+)"
+)
 _DOODSTER_URL_RE = re.compile(_DOODSTER_VALID_URL, re.IGNORECASE)
 _STREAMTAPE_VIDEO_LINK_RE = re.compile(
     r"<(?:div|span)[^>]+id=[\"'](?P<id>robotlink|botlink)[\"'][^>]*>(?P<url>//[^<]+)</",
@@ -411,44 +414,45 @@ class StreamtapeIE(InfoExtractor):
 
 
 class DoodsterIE(InfoExtractor):
-    IE_NAME = "doodster"
+    IE_NAME = "doodclone"
     _VALID_URL = _DOODSTER_VALID_URL
 
     def _real_extract(self, url):
         video_id = self._match_id(url)
         embed_url = re.sub(r"/d/", "/e/", url)
         headers = {"Referer": "https://transhub.to/"}
-        webpage = self._download_webpage(
+        webpage, urlh = self._download_webpage_handle(
             embed_url,
             video_id,
             headers=headers,
             impersonate=True,
             require_impersonation=True,
         )
+        page_url = urlh.url
 
         pass_md5_url = self._search_regex(
             _DOODSTER_PASS_MD5_RE,
             webpage,
-            "Doodster pass_md5 URL",
+            "Dood-like pass_md5 URL",
             group="url",
         )
         token_match = _DOODSTER_TOKEN_RE.search(pass_md5_url) or _DOODSTER_TOKEN_RE.search(webpage)
         token = token_match.group("token") if token_match else None
 
         expiry = str(int(time.time() * 1000))
-        pass_md5_url = urljoin(embed_url, unescape(pass_md5_url))
+        pass_md5_url = urljoin(page_url, unescape(pass_md5_url))
         if pass_md5_url.endswith("expiry="):
             pass_md5_url += expiry
 
         video_url_base = self._download_webpage(
             pass_md5_url,
             video_id,
-            note="Downloading Doodster video URL",
-            headers={"Referer": embed_url},
+            note="Downloading Dood-like video URL",
+            headers={"Referer": page_url},
             impersonate=True,
             require_impersonation=True,
         ).strip()
-        video_url_base = _url_or_none(video_url_base) or urljoin(embed_url, video_url_base)
+        video_url_base = _url_or_none(video_url_base) or urljoin(page_url, video_url_base)
 
         query = f"expiry={expiry}"
         if token:
@@ -464,7 +468,7 @@ class DoodsterIE(InfoExtractor):
             _url_or_none(_search_meta(webpage, "og:image"))
             or _url_or_none(_search_meta(webpage, "twitter:image"))
         )
-        media_headers = {"Referer": embed_url}
+        media_headers = {"Referer": page_url}
 
         return {
             "id": video_id,
