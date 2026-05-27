@@ -23,7 +23,7 @@ _LULU_URL_RE = re.compile(_LULU_VALID_URL, re.IGNORECASE)
 _STREAMTAPE_VALID_URL = r"https?://(?:www\.)?streamtape\.com/(?:e|v)/(?P<id>[^/?#]+)"
 _STREAMTAPE_URL_RE = re.compile(_STREAMTAPE_VALID_URL, re.IGNORECASE)
 _DOODSTER_VALID_URL = (
-    r"https?://(?:www\.)?(?:dooodster|vidply|playmogo)\.com/"
+    r"https?://(?:www\.)?(?:dooodster|vidply|playmogo|do7go)\.com/"
     r"(?:e|d)/(?P<id>[^/?#]+)"
 )
 _DOODSTER_URL_RE = re.compile(_DOODSTER_VALID_URL, re.IGNORECASE)
