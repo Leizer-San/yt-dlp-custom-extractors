@@ -1,12 +1,14 @@
 # yt-dlp extractor plugins
 
-A [yt-dlp](https://github.com/yt-dlp/yt-dlp) extractor plugin package for **PimpBunny** and **TransHub**.
+A [yt-dlp](https://github.com/yt-dlp/yt-dlp) extractor plugin package for **PimpBunny**, **TransHub**, and **X-TG**.
 
 ## Supported URLs
 
 - `https://pimpbunny.com/videos/<slug>/`
 - `https://pimpbunny.com/<lang>/videos/<slug>/`
 - `https://transhub.to/<category>/<slug>/`
+- `https://x-tg.tube/video/<id>/<slug>/`
+- `https://x-tg.tube/embed/<id>`
 
 ## Features
 
@@ -15,12 +17,13 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) extractor plugin package for **Pimp
 - Handles geo-restricted `function/` URLs via locale fallback
 - Supports JSON-LD, player config, and OpenGraph metadata sources
 - Extracts TransHub embeds from LuluVdo/LuluVdoo/LuluVid/LuluStream, Streamtape, Dooodster, Vidply/Playmogo/Do7go, and VOE iframe pages
+- Extracts X-TG KVS player formats through `curl-cffi` browser impersonation
 
 ## Installation
 
 Requires **yt-dlp** `2023.01.02` or above.
 
-Some TransHub pages use Dooodster embeds protected by Cloudflare. The pip install includes a yt-dlp-compatible
+Some TransHub embeds and X-TG pages require browser impersonation. The pip install includes a yt-dlp-compatible
 `curl-cffi` version automatically. If you install the plugin manually by copying files, install it in the same
 environment too:
 
@@ -46,6 +49,10 @@ yt-dlp "https://pimpbunny.com/videos/example-video/"
 
 ```bash
 yt-dlp "https://transhub.to/anal/example-video/"
+```
+
+```bash
+yt-dlp "https://x-tg.tube/video/371176/example-video/"
 ```
 
 ```bash
