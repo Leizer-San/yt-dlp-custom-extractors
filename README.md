@@ -1,6 +1,6 @@
 # yt-dlp extractor plugins
 
-A [yt-dlp](https://github.com/yt-dlp/yt-dlp) extractor plugin package for **PimpBunny**, **TransHub**, and **X-TG**.
+A [yt-dlp](https://github.com/yt-dlp/yt-dlp) custom extractor plugin package for **PimpBunny**, **TransHub**, **X-TG**, and more.
 
 ## Supported URLs
 
@@ -34,7 +34,7 @@ python -m pip install -U "curl-cffi>=0.10,<0.15"
 ### pip (recommended)
 
 ```bash
-python -m pip install -U "git+https://github.com/Leizer-San/yt-dlp-pimpbunny-extractor.git"
+python -m pip install -U "git+https://github.com/Leizer-San/yt-dlp-custom-extractors.git"
 ```
 
 ### Manual
