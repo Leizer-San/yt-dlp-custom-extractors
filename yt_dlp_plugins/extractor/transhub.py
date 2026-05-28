@@ -34,6 +34,7 @@ _VOE_VALID_URL = (
     r"(?:e|d)/(?P<id>[^/?#]+)"
 )
 _VOE_URL_RE = re.compile(_VOE_VALID_URL, re.IGNORECASE)
+_LULU_CDN_BAD_CERT_RE = re.compile(r"https?://[^/?#]+\.cdn-tnmr\.org(?::\d+)?(?:[/?#]|$)", re.IGNORECASE)
 _STREAMTAPE_VIDEO_LINK_RE = re.compile(
     r"<(?:div|span)[^>]+id=[\"'](?P<id>robotlink|botlink)[\"'][^>]*>(?P<url>//[^<]+)</",
     re.IGNORECASE,
@@ -396,6 +397,13 @@ class LuluVdoIE(InfoExtractor):
         formats = []
         headers = {"Referer": url}
         media_urls = lulu_info.get("media_urls") or []
+        if any(_LULU_CDN_BAD_CERT_RE.match(media_url) for media_url in media_urls):
+            if not self.get_param("nocheckcertificate"):
+                self.report_warning(
+                    "LuluVdo CDN certificate does not match its hostname; "
+                    "disabling certificate verification for this download")
+            self._downloader.params["nocheckcertificate"] = True
+            self._downloader.__dict__.pop("_request_director", None)
         for media_url in media_urls:
             if ".m3u8" in media_url:
                 formats.extend(self._extract_m3u8_formats(
