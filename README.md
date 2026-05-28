@@ -1,6 +1,6 @@
 # yt-dlp extractor plugins
 
-A [yt-dlp](https://github.com/yt-dlp/yt-dlp) custom extractor plugin package for **PimpBunny**, **TransHub**, **X-TG**, and more.
+A [yt-dlp](https://github.com/yt-dlp/yt-dlp) custom extractor plugin package for **PimpBunny**, **TransHub**, **X-TG**, **NSFW247**, and more.
 
 ## Supported URLs
 
@@ -9,6 +9,7 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) custom extractor plugin package for
 - `https://transhub.to/<category>/<slug>/`
 - `https://x-tg.tube/video/<id>/<slug>/`
 - `https://x-tg.tube/embed/<id>`
+- `https://nsfw247.to/<slug>/`
 
 ## Features
 
@@ -18,6 +19,7 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) custom extractor plugin package for
 - Supports JSON-LD, player config, and OpenGraph metadata sources
 - Extracts TransHub embeds from LuluVdo/LuluVdoo/LuluVid/LuluStream, Streamtape, Dooodster, Vidply/Playmogo/Do7go, and VOE iframe pages
 - Extracts X-TG KVS player formats through `curl-cffi` browser impersonation
+- Extracts NSFW247 FluidPlayer MP4 pages without duplicate `noscript` playlist entries
 
 ## Installation
 
@@ -53,6 +55,10 @@ yt-dlp "https://transhub.to/anal/example-video/"
 
 ```bash
 yt-dlp "https://x-tg.tube/video/371176/example-video/"
+```
+
+```bash
+yt-dlp "https://nsfw247.to/example-video/"
 ```
 
 ```bash
