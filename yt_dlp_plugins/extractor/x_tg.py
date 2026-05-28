@@ -3,7 +3,7 @@ import json
 import re
 from datetime import datetime, timezone
 from html import unescape
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 from yt_dlp.extractor.common import InfoExtractor
 
@@ -13,8 +13,14 @@ _VALID_URL = (
     r"(?:(?:video/(?P<id>\d+)(?:/(?P<display_id>[^/?#]+))?)|(?:embed/(?P<embed_id>\d+)))/?"
     r"(?:[?#].*)?$"
 )
+_MODEL_VALID_URL = (
+    r"https?://(?:www\.)?x-tg\.tube/models/(?P<id>[^/?#]+)"
+    r"(?:/videos(?:/(?P<page>\d+))?)?/?"
+    r"(?:[?#].*)?$"
+)
 _PLAYER_CONFIG_RE = re.compile(r"\bvar\s+[A-Za-z_$][\w$]*\s*=", re.IGNORECASE)
 _TITLE_RE = re.compile(r"<title>(?P<value>.*?)</title>", re.IGNORECASE | re.DOTALL)
+_HREF_RE = re.compile(r"<a\b[^>]+\bhref=[\"'](?P<value>[^\"']+)", re.IGNORECASE | re.DOTALL)
 _CANONICAL_RE = re.compile(
     r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\'](?P<value>[^"\']+)',
     re.IGNORECASE,
@@ -51,6 +57,19 @@ def _clean_title(value):
     return _strip_or_none(re.sub(r"\s+-\s+XXX .*?$", "", value, flags=re.IGNORECASE))
 
 
+def _clean_model_title(value):
+    value = _clean_html_text(value)
+    if not value:
+        return None
+    value = re.sub(
+        r"^X-?tg:\s*XXX\s+tranny\s+videos\s+and\s+sex\s+films\s+starring\s+",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    )
+    return _strip_or_none(value)
+
+
 def _url_or_none(url):
     url = _strip_or_none(url)
     if not url:
@@ -84,6 +103,20 @@ def _search_canonical(webpage):
     if not match:
         return None
     return _url_or_none(match.group("value"))
+
+
+def _iter_href_urls(webpage, base_url):
+    for match in _HREF_RE.finditer(webpage):
+        url = _url_or_none(urljoin(base_url, unescape(match.group("value"))))
+        if url:
+            yield url
+
+
+def _normalize_url(url, keep_query=True):
+    parsed = urlparse(url)
+    if not keep_query:
+        parsed = parsed._replace(query="")
+    return urlunparse(parsed._replace(fragment=""))
 
 
 def _extract_balanced_block(text, start_idx, open_char="{", close_char="}"):
@@ -191,6 +224,30 @@ def _find_json_ld_videoobject(webpage):
         candidates = parsed if isinstance(parsed, list) else [parsed]
         for candidate in candidates:
             if isinstance(candidate, dict) and candidate.get("@type") == "VideoObject":
+                return candidate
+    return {}
+
+
+def _find_json_ld_person(webpage):
+    for match in _JSON_LD_RE.finditer(webpage):
+        raw_value = match.group("value").strip()
+        if not raw_value:
+            continue
+        try:
+            parsed = json.loads(raw_value)
+        except json.JSONDecodeError:
+            continue
+
+        candidates = parsed if isinstance(parsed, list) else [parsed]
+        if isinstance(parsed, dict) and isinstance(parsed.get("@graph"), list):
+            candidates.extend(parsed["@graph"])
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            candidate_type = candidate.get("@type")
+            if candidate_type == "Person" or (
+                isinstance(candidate_type, list) and "Person" in candidate_type
+            ):
                 return candidate
     return {}
 
@@ -379,6 +436,38 @@ def _extract_counts(json_ld):
     return result
 
 
+def _extract_model_video_urls(webpage, base_url):
+    seen_urls = set()
+    for href in _iter_href_urls(webpage, base_url):
+        if not re.match(_VALID_URL, href, re.IGNORECASE):
+            continue
+        video_url = _normalize_url(href, keep_query=False)
+        if video_url in seen_urls:
+            continue
+        seen_urls.add(video_url)
+        yield video_url
+
+
+def _extract_model_page_urls(webpage, base_url, model_id):
+    seen_urls = set()
+    for href in _iter_href_urls(webpage, base_url):
+        match = re.match(_MODEL_VALID_URL, href, re.IGNORECASE)
+        if not match or match.group("id") != model_id:
+            continue
+
+        parsed = urlparse(href)
+        if f"/models/{model_id}/videos" not in parsed.path:
+            continue
+        if parsed.query and "by=post_date" not in parsed.query:
+            continue
+
+        page_url = _normalize_url(href)
+        if page_url in seen_urls:
+            continue
+        seen_urls.add(page_url)
+        yield page_url
+
+
 def parse_x_tg_html(webpage, url):
     player_config = _find_player_config(webpage)
     json_ld = _find_json_ld_videoobject(webpage)
@@ -466,3 +555,74 @@ class XTgTubeIE(InfoExtractor):
             require_impersonation=True,
         )
         return parse_x_tg_html(webpage, url)
+
+
+class XTgTubeModelIE(InfoExtractor):
+    IE_NAME = "x-tg:model"
+    _VALID_URL = _MODEL_VALID_URL
+
+    def _download_model_webpage(self, url, playlist_id, page_number=None):
+        note = None if page_number is None else f"Downloading model page {page_number}"
+        return self._download_webpage(
+            url,
+            playlist_id,
+            note=note,
+            impersonate=True,
+            require_impersonation=True,
+        )
+
+    def _entries(self, first_url, playlist_id, first_webpage):
+        page_queue = [(first_url, first_webpage)]
+        seen_pages = set()
+        seen_video_urls = set()
+
+        while page_queue:
+            page_url, webpage = page_queue.pop(0)
+            normalized_page_url = _normalize_url(page_url)
+            if normalized_page_url in seen_pages:
+                continue
+            page_number = len(seen_pages) + 1
+            seen_pages.add(normalized_page_url)
+
+            if webpage is None:
+                webpage = self._download_model_webpage(page_url, playlist_id, page_number)
+
+            for video_url in _extract_model_video_urls(webpage, page_url):
+                if video_url in seen_video_urls:
+                    continue
+                seen_video_urls.add(video_url)
+                yield self.url_result(video_url, ie=XTgTubeIE.ie_key())
+
+            queued_page_urls = {_normalize_url(item[0]) for item in page_queue}
+            for next_page_url in _extract_model_page_urls(webpage, page_url, playlist_id):
+                normalized_next_page_url = _normalize_url(next_page_url)
+                if normalized_next_page_url in seen_pages or normalized_next_page_url in queued_page_urls:
+                    continue
+                queued_page_urls.add(normalized_next_page_url)
+                page_queue.append((next_page_url, None))
+
+    def _real_extract(self, url):
+        playlist_id = self._match_id(url)
+        webpage = self._download_model_webpage(url, playlist_id)
+        person = _find_json_ld_person(webpage)
+        canonical_url = _search_canonical(webpage) or url
+        title = (
+            _strip_or_none(person.get("name"))
+            or _clean_model_title(_search_meta(webpage, "og:title"))
+            or _clean_model_title(_search_meta(webpage, "twitter:title"))
+            or _clean_model_title(_search_title(webpage))
+            or playlist_id.replace("-", " ").title()
+        )
+        description = (
+            _search_meta(webpage, "description")
+            or _search_meta(webpage, "og:description")
+            or _search_meta(webpage, "twitter:description")
+            or _strip_or_none(person.get("description"))
+        )
+
+        return self.playlist_result(
+            self._entries(url, playlist_id, webpage),
+            playlist_id,
+            title,
+            description,
+        )
