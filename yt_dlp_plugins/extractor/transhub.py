@@ -1,3 +1,5 @@
+import base64
+import json
 import random
 import re
 import string
@@ -27,6 +29,11 @@ _DOODSTER_VALID_URL = (
     r"(?:e|d)/(?P<id>[^/?#]+)"
 )
 _DOODSTER_URL_RE = re.compile(_DOODSTER_VALID_URL, re.IGNORECASE)
+_VOE_VALID_URL = (
+    r"https?://(?:www\.)?(?:voe\.sx|vickisaveworker\.com)/"
+    r"(?:e|d)/(?P<id>[^/?#]+)"
+)
+_VOE_URL_RE = re.compile(_VOE_VALID_URL, re.IGNORECASE)
 _STREAMTAPE_VIDEO_LINK_RE = re.compile(
     r"<(?:div|span)[^>]+id=[\"'](?P<id>robotlink|botlink)[\"'][^>]*>(?P<url>//[^<]+)</",
     re.IGNORECASE,
@@ -66,6 +73,14 @@ _JW_IMAGE_RE = re.compile(r"\bimage\s*:\s*[\"'](?P<url>https?://[^\"']+)", re.IG
 _JW_DURATION_RE = re.compile(r"\bduration\s*:\s*[\"']?(?P<value>\d+(?:\.\d+)?)", re.IGNORECASE)
 _DOODSTER_PASS_MD5_RE = re.compile(r"(?P<url>/pass_md5/[^\"'<>\\\s]+)", re.IGNORECASE)
 _DOODSTER_TOKEN_RE = re.compile(r"[?&]token=(?P<token>[A-Za-z0-9]+)", re.IGNORECASE)
+_VOE_JSON_RE = re.compile(
+    r"<script\b[^>]+type=[\"']application/json[\"'][^>]*>(?P<value>.*?)</script>",
+    re.IGNORECASE | re.DOTALL,
+)
+_VOE_JS_REDIRECT_RE = re.compile(
+    r"window\.location\.href\s*=\s*(?P<quote>[\"'])(?P<url>https?://[^\"']+)(?P=quote)",
+    re.IGNORECASE,
+)
 
 
 def _strip_or_none(value):
@@ -147,11 +162,12 @@ def _is_supported_embed_url(url):
         _LULU_URL_RE.match(url or "")
         or _STREAMTAPE_URL_RE.match(url or "")
         or _DOODSTER_URL_RE.match(url or "")
+        or _VOE_URL_RE.match(url or "")
     )
 
 
 def _guess_embed_id(url):
-    for pattern in (_LULU_URL_RE, _STREAMTAPE_URL_RE, _DOODSTER_URL_RE):
+    for pattern in (_LULU_URL_RE, _STREAMTAPE_URL_RE, _DOODSTER_URL_RE, _VOE_URL_RE):
         match = pattern.match(url or "")
         if match:
             return match.group("id")
@@ -166,7 +182,7 @@ def _extract_video_embed_url(webpage):
             if candidate and _is_supported_embed_url(candidate):
                 return candidate
 
-    for pattern in (_LULU_URL_RE, _STREAMTAPE_URL_RE, _DOODSTER_URL_RE):
+    for pattern in (_LULU_URL_RE, _STREAMTAPE_URL_RE, _DOODSTER_URL_RE, _VOE_URL_RE):
         match = pattern.search(webpage)
         if match:
             return match.group(0)
@@ -300,6 +316,46 @@ def _extract_streamtape_video_url(webpage):
         if video_url and "/get_video" in video_url:
             return video_url
 
+    return None
+
+
+def _rot13(value):
+    chars = []
+    for char in value:
+        code = ord(char)
+        if 65 <= code <= 90:
+            code = (code - 65 + 13) % 26 + 65
+        elif 97 <= code <= 122:
+            code = (code - 97 + 13) % 26 + 97
+        chars.append(chr(code))
+    return "".join(chars)
+
+
+def _decode_voe_config(encoded):
+    value = _rot13(encoded)
+    for marker in ("@$", "^^", "~@", "%?", "*~", "!!", "#&"):
+        value = value.replace(marker, "_")
+    value = value.replace("_", "")
+    value = base64.b64decode(value).decode("latin-1")
+    value = "".join(chr(ord(char) - 3) for char in value)
+    value = value[::-1]
+    return json.loads(base64.b64decode(value).decode("utf-8"))
+
+
+def _extract_voe_config(webpage):
+    for match in _VOE_JSON_RE.finditer(webpage):
+        try:
+            values = json.loads(match.group("value"))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(values, list) or not values or not isinstance(values[0], str):
+            continue
+        try:
+            config = _decode_voe_config(values[0])
+        except Exception:
+            continue
+        if isinstance(config, dict) and config.get("source"):
+            return config
     return None
 
 
@@ -485,6 +541,82 @@ class DoodsterIE(InfoExtractor):
         }
 
 
+class VoeIE(InfoExtractor):
+    IE_NAME = "voe"
+    _VALID_URL = _VOE_VALID_URL
+
+    def _real_extract(self, url):
+        video_id = self._match_id(url)
+        headers = {"Referer": "https://transhub.to/"}
+        webpage = self._download_webpage(url, video_id, headers=headers)
+
+        redirect_match = _VOE_JS_REDIRECT_RE.search(webpage)
+        if redirect_match:
+            page_url = redirect_match.group("url")
+            webpage = self._download_webpage(
+                page_url,
+                video_id,
+                note="Downloading redirected VOE page",
+                headers={"Referer": url},
+            )
+        else:
+            page_url = url
+
+        config = _extract_voe_config(webpage)
+        if not config:
+            self.raise_no_formats("Could not find VOE media config", expected=True)
+
+        media_headers = {"Referer": page_url}
+        formats = []
+        source_url = _url_or_none(config.get("source"))
+        if source_url:
+            if ".m3u8" in source_url:
+                formats.extend(self._extract_m3u8_formats(
+                    source_url,
+                    video_id,
+                    ext="mp4",
+                    m3u8_id="hls",
+                    fatal=True,
+                    headers=media_headers,
+                ))
+            else:
+                formats.append({
+                    "url": source_url,
+                    "format_id": "http",
+                    "http_headers": media_headers,
+                })
+
+        for fallback in config.get("fallback") or []:
+            fallback_url = _url_or_none(fallback.get("file") if isinstance(fallback, dict) else fallback)
+            if not fallback_url:
+                continue
+            formats.append({
+                "url": fallback_url,
+                "format_id": fallback.get("label") if isinstance(fallback, dict) else "fallback",
+                "http_headers": media_headers,
+            })
+
+        direct_url = _url_or_none(config.get("direct_access_url"))
+        if direct_url:
+            formats.append({
+                "url": direct_url,
+                "format_id": "direct",
+                "ext": "mp4",
+                "http_headers": media_headers,
+            })
+
+        if not formats:
+            self.raise_no_formats("Could not find downloadable media in VOE page", expected=True)
+
+        return {
+            "id": config.get("file_code") or video_id,
+            "title": config.get("title") or _clean_title(_search_meta(webpage, "og:title")) or video_id,
+            "thumbnail": _url_or_none(config.get("thumbnail")) or _url_or_none(_search_meta(webpage, "og:image")),
+            "formats": formats,
+            "http_headers": media_headers,
+        }
+
+
 class TransHubIE(InfoExtractor):
     IE_NAME = "transhub"
     _VALID_URL = _TRANSHUB_VALID_URL
@@ -505,4 +637,6 @@ class TransHubIE(InfoExtractor):
             info["ie_key"] = StreamtapeIE.ie_key()
         elif _DOODSTER_URL_RE.match(embed_url):
             info["ie_key"] = DoodsterIE.ie_key()
+        elif _VOE_URL_RE.match(embed_url):
+            info["ie_key"] = VoeIE.ie_key()
         return info
