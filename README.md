@@ -1,6 +1,6 @@
 # yt-dlp extractor plugins
 
-A [yt-dlp](https://github.com/yt-dlp/yt-dlp) custom extractor plugin package for **PimpBunny**, **TransHub**, **X-TG**, **NSFW247**, and more.
+A [yt-dlp](https://github.com/yt-dlp/yt-dlp) custom extractor plugin package for **PimpBunny**, **TransHub**, **X-TG**, **NSFW247**, **PureGirl**, and more.
 
 ## Supported URLs
 
@@ -11,6 +11,7 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) custom extractor plugin package for
 - `https://x-tg.tube/embed/<id>`
 - `https://x-tg.tube/models/<slug>/`
 - `https://nsfw247.to/<slug>/`
+- `https://puregirl.tv/post/<id>`
 
 ## Features
 
@@ -21,6 +22,7 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) custom extractor plugin package for
 - Extracts TransHub embeds from LuluVdo/LuluVdoo/LuluVid/LuluStream, Streamtape, Dooodster, Vidply/Playmogo/Do7go, and VOE iframe pages
 - Extracts X-TG KVS player formats and model playlists through `curl-cffi` browser impersonation
 - Extracts NSFW247 FluidPlayer MP4 pages without duplicate `noscript` playlist entries
+- Extracts PureGirl HLS and MP4 posts through the site's public JSON API
 
 ## Installation
 
@@ -64,6 +66,10 @@ yt-dlp "https://x-tg.tube/models/example-model/"
 
 ```bash
 yt-dlp "https://nsfw247.to/example-video/"
+```
+
+```bash
+yt-dlp "https://puregirl.tv/post/example-video.00000000-0000-0000-0000-000000000000"
 ```
 
 ```bash
