@@ -12,6 +12,9 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) custom extractor plugin package for
 - `https://x-tg.tube/models/<slug>/`
 - `https://nsfw247.to/<slug>/`
 - `https://puregirl.tv/post/<id>`
+- `https://hornysimp.com.<tld>/<slug>/`
+- `https://luluvids.top/e/<id>`
+- `https://morencius.com/embed/<id>`
 
 ## Features
 
@@ -23,6 +26,7 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) custom extractor plugin package for
 - Extracts X-TG KVS player formats and model playlists through `curl-cffi` browser impersonation
 - Extracts NSFW247 FluidPlayer MP4 pages without duplicate `noscript` playlist entries
 - Extracts PureGirl HLS and MP4 posts through the site's public JSON API
+- Extracts HornySimp pages by resolving LuluVids and Morencius embedded stream mirrors
 
 ## Installation
 

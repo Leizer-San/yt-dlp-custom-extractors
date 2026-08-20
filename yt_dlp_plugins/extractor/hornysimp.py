@@ -119,6 +119,12 @@ def _parse_timestamp(value):
         return None
 
 
+_SUPPORTED_EMBED_RE = re.compile(
+    r"https?://(?:[\w-]+\.)?(?:luluvids\.top|morencius\.com|lulustream\.com|luluvdo\.com|luluvdoo\.com|luluvid\.com|vidhide\.com|streamtape\.com|voe\.sx)/",
+    re.IGNORECASE,
+)
+
+
 def _extract_embeds(webpage):
     seen = set()
     embeds = []
@@ -127,7 +133,12 @@ def _extract_embeds(webpage):
         if url and url not in seen:
             seen.add(url)
             embeds.append(url)
+
+    supported = [u for u in embeds if _SUPPORTED_EMBED_RE.match(u)]
+    if supported:
+        return supported
     return embeds
+
 
 
 def _extract_thumbnail(webpage):
