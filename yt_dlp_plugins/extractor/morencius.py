@@ -30,7 +30,11 @@ _HLS_RE = re.compile(
     r'(?:file\s*:\s*|["\'])(https?://[^"\']+\.m3u8[^"\']*)["\']',
     re.IGNORECASE,
 )
-_DURATION_RE = re.compile(r'duration\s*:\s*["\']?([0-9.]+)["\']?', re.IGNORECASE)
+_THUMB_RE = re.compile(
+    r'(?:image|poster)\s*:\s*["\x27]([^"\x27]+)["\x27]',
+    re.IGNORECASE,
+)
+_DURATION_RE = re.compile(r'duration\s*:\s*["\x27]?([0-9.]+)["\x27]?', re.IGNORECASE)
 
 _ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -116,9 +120,16 @@ class MorenciusIE(InfoExtractor):
             )
         )
 
-        thumbnail = _strip_or_none(_search_meta(webpage, "og:image"))
-
         unpacked = _decode_packed(webpage) or webpage
+
+        thumbnail = (
+            _strip_or_none(_search_meta(webpage, "og:image"))
+            or _strip_or_none(_search_meta(webpage, "twitter:image"))
+        )
+        if not thumbnail:
+            thumb_m = _THUMB_RE.search(unpacked)
+            thumbnail = _strip_or_none(thumb_m.group(1)) if thumb_m else None
+
 
         # Extract M3U8 URLs from unpacked JS
         hls_urls = []

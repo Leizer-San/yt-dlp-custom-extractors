@@ -211,10 +211,18 @@ def parse_hornysimp_html(webpage, url):
     duration = _extract_duration(webpage)
     uploader = actors[0] if len(actors) == 1 else None
 
+    thumbnails = []
+    if thumbnail:
+        thumbnails.append({
+            "url": thumbnail,
+            "http_headers": {"Referer": canonical_url},
+        })
+
     info = {
         "id": video_id,
         "title": title,
         "thumbnail": thumbnail,
+        "thumbnails": thumbnails or None,
         "cast": actors or None,
         "uploader": uploader,
         "timestamp": timestamp,
@@ -258,8 +266,9 @@ class HornySimpIE(InfoExtractor):
         # Build one URL entry per embedded player so yt-dlp can resolve each one.
         # Common metadata from the HornySimp page is propagated into every entry
         # so that yt-dlp's merge logic fills in missing fields on the resolved video.
+        # Note: We omit "thumbnail" so the embed's own high-res thumbnail is preserved.
         shared_meta = {k: info[k] for k in (
-            "thumbnail", "cast", "uploader", "timestamp",
+            "cast", "uploader", "timestamp",
             "upload_date", "duration", "age_limit", "webpage_url",
         ) if k in info}
 
@@ -272,6 +281,7 @@ class HornySimpIE(InfoExtractor):
             )
             entry.update(shared_meta)
             entries.append(entry)
+
 
         if not entries:
             self.raise_no_formats("Could not find any playable embeds", expected=True)
