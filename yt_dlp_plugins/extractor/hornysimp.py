@@ -238,6 +238,14 @@ def parse_hornysimp_html(webpage, url):
     return {k: v for k, v in info.items() if v not in (None, [], "")}
 
 
+from .luluvids import _extract_media as _lulu_extract_media
+from .morencius import (
+    _HLS_RE as _MORENCIUS_HLS_RE,
+    _THUMB_RE as _MORENCIUS_THUMB_RE,
+    _decode_packed as _morencius_decode,
+)
+
+
 class HornySimpIE(InfoExtractor):
     IE_NAME = "hornysimp"
     IE_DESC = "HornySimp"
@@ -246,10 +254,11 @@ class HornySimpIE(InfoExtractor):
     _TESTS = [{
         "url": "https://w11.hornysimp.com.lv/angela-white-brand-new-sloppy-sloppy-blowbang-swallow/",
         "info_dict": {
+            "id": "angela-white-brand-new-sloppy-sloppy-blowbang-swallow",
+            "ext": "mp4",
             "title": "Angela White BRAND NEW Sloppy Sloppy Blowbang Swallow",
             "age_limit": 18,
         },
-        "playlist_mincount": 1,
     }]
 
     def _real_extract(self, url):
@@ -262,35 +271,78 @@ class HornySimpIE(InfoExtractor):
             self.raise_no_formats(str(e), expected=True)
 
         embeds = info.pop("_embeds", [])
+        canonical_url = info.get("webpage_url") or url
 
-        # Build one URL entry per embedded player so yt-dlp can resolve each one.
-        # Common metadata from the HornySimp page is propagated into every entry
-        # so that yt-dlp's merge logic fills in missing fields on the resolved video.
-        # Note: We omit "thumbnail" so the embed's own high-res thumbnail is preserved.
-        shared_meta = {k: info[k] for k in (
-            "cast", "uploader", "timestamp",
-            "upload_date", "duration", "age_limit", "webpage_url",
-        ) if k in info}
+        formats = []
+        thumbnails = list(info.get("thumbnails") or [])
 
-        entries = []
         for embed_url in embeds:
-            entry = self.url_result(
-                embed_url,
-                video_title=info.get("title"),
-                url_transparent=True,
-            )
-            entry.update(shared_meta)
-            entries.append(entry)
+            try:
+                if re.search(r"luluvids\.top", embed_url, re.IGNORECASE):
+                    embed_page = self._download_webpage(
+                        embed_url, video_id, note="Downloading LuluVids embed",
+                        headers={"Referer": canonical_url}, fatal=False,
+                    )
+                    if embed_page:
+                        media = _lulu_extract_media(embed_page)
+                        for media_url, ext in media:
+                            if ext == "m3u8":
+                                fmts = self._extract_m3u8_formats(
+                                    media_url, video_id, ext="mp4",
+                                    entry_protocol="m3u8_native",
+                                    m3u8_id="luluvids", fatal=False,
+                                    headers={"Referer": embed_url},
+                                )
+                                formats.extend(fmts)
+                            else:
+                                formats.append({
+                                    "url": media_url,
+                                    "format_id": f"luluvids-{ext}",
+                                    "ext": ext,
+                                    "http_headers": {"Referer": embed_url},
+                                })
+                        lulu_thumb = (
+                            _strip_or_none(_search_meta(embed_page, "og:image"))
+                            or _strip_or_none(_search_meta(embed_page, "twitter:image"))
+                        )
+                        if lulu_thumb:
+                            thumbnails.append({"url": lulu_thumb, "preference": 10})
 
+                elif re.search(r"morencius\.com", embed_url, re.IGNORECASE):
+                    embed_page = self._download_webpage(
+                        embed_url, video_id, note="Downloading Morencius embed",
+                        headers={"Referer": canonical_url}, fatal=False,
+                    )
+                    if embed_page:
+                        unpacked = _morencius_decode(embed_page) or embed_page
+                        for m in _MORENCIUS_HLS_RE.finditer(unpacked):
+                            hls_url = _strip_or_none(m.group(1))
+                            if hls_url:
+                                fmts = self._extract_m3u8_formats(
+                                    hls_url, video_id, ext="mp4",
+                                    entry_protocol="m3u8_native",
+                                    m3u8_id="morencius", fatal=False,
+                                    headers={"Referer": embed_url},
+                                )
+                                formats.extend(fmts)
+                        thumb_m = _MORENCIUS_THUMB_RE.search(unpacked)
+                        if thumb_m:
+                            thumbnails.append({
+                                "url": _strip_or_none(thumb_m.group(1)),
+                                "preference": 10,
+                            })
+            except Exception as e:
+                self.report_warning(f"Failed to extract formats from mirror {embed_url}: {e}")
 
-        if not entries:
-            self.raise_no_formats("Could not find any playable embeds", expected=True)
+        if not formats:
+            self.raise_no_formats("Could not find playable video formats on any mirror", expected=True)
 
-        if len(entries) == 1:
-            return entries[0]
+        info["formats"] = formats
+        if thumbnails:
+            info["thumbnails"] = thumbnails
+            # Pick highest preference thumbnail
+            best_thumb = max(thumbnails, key=lambda t: t.get("preference", 0))
+            info["thumbnail"] = best_thumb["url"]
 
-        return self.playlist_result(
-            entries,
-            playlist_id=info.get("id"),
-            playlist_title=info.get("title"),
-        )
+        return info
+
