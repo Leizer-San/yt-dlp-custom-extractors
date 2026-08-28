@@ -22,7 +22,7 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) custom extractor plugin package for
 - Parses metadata: title, uploader/cast, thumbnail, description, duration, upload date, tags, categories
 - Handles geo-restricted `function/` URLs via locale fallback
 - Supports JSON-LD, player config, and OpenGraph metadata sources
-- Extracts TransHub embeds from LuluVdo/LuluVdoo/LuluVid/LuluStream, Streamtape, Dooodster, Vidply/Playmogo/Do7go, and VOE iframe pages
+- Extracts TransHub embeds from MediaDelivery/Bunny Stream, LuluVdo/LuluVdoo/LuluVid/LuluStream, Streamtape, Dooodster, Vidply/Playmogo/Do7go, and VOE iframe pages
 - Extracts X-TG KVS player formats and model playlists through `curl-cffi` browser impersonation
 - Extracts NSFW247 FluidPlayer MP4 pages without duplicate `noscript` playlist entries
 - Extracts PureGirl HLS and MP4 posts through the site's public JSON API

@@ -9,7 +9,7 @@ from html import unescape
 from urllib.parse import urljoin
 
 from yt_dlp.extractor.common import InfoExtractor
-from yt_dlp.utils import decode_packed_codes, float_or_none
+from yt_dlp.utils import decode_packed_codes, float_or_none, smuggle_url
 
 
 _TRANSHUB_VALID_URL = (
@@ -34,6 +34,11 @@ _VOE_VALID_URL = (
     r"(?:e|d)/(?P<id>[^/?#]+)"
 )
 _VOE_URL_RE = re.compile(_VOE_VALID_URL, re.IGNORECASE)
+_BUNNY_VALID_URL = (
+    r"https?://(?:(?:iframe|player)\.mediadelivery\.net|video\.bunnycdn\.com)/"
+    r"(?:embed|play)/(?P<library_id>\d+)/(?P<id>[\da-f-]+)"
+)
+_BUNNY_URL_RE = re.compile(_BUNNY_VALID_URL, re.IGNORECASE)
 _LULU_CDN_BAD_CERT_RE = re.compile(r"https?://[^/?#]+\.cdn-tnmr\.org(?::\d+)?(?:[/?#]|$)", re.IGNORECASE)
 _STREAMTAPE_VIDEO_LINK_RE = re.compile(
     r"<(?:div|span)[^>]+id=[\"'](?P<id>robotlink|botlink)[\"'][^>]*>(?P<url>//[^<]+)</",
@@ -164,11 +169,12 @@ def _is_supported_embed_url(url):
         or _STREAMTAPE_URL_RE.match(url or "")
         or _DOODSTER_URL_RE.match(url or "")
         or _VOE_URL_RE.match(url or "")
+        or _BUNNY_URL_RE.match(url or "")
     )
 
 
 def _guess_embed_id(url):
-    for pattern in (_LULU_URL_RE, _STREAMTAPE_URL_RE, _DOODSTER_URL_RE, _VOE_URL_RE):
+    for pattern in (_LULU_URL_RE, _STREAMTAPE_URL_RE, _DOODSTER_URL_RE, _VOE_URL_RE, _BUNNY_URL_RE):
         match = pattern.match(url or "")
         if match:
             return match.group("id")
@@ -183,7 +189,7 @@ def _extract_video_embed_url(webpage):
             if candidate and _is_supported_embed_url(candidate):
                 return candidate
 
-    for pattern in (_LULU_URL_RE, _STREAMTAPE_URL_RE, _DOODSTER_URL_RE, _VOE_URL_RE):
+    for pattern in (_LULU_URL_RE, _STREAMTAPE_URL_RE, _DOODSTER_URL_RE, _VOE_URL_RE, _BUNNY_URL_RE):
         match = pattern.search(webpage)
         if match:
             return match.group(0)
@@ -627,7 +633,27 @@ class VoeIE(InfoExtractor):
 
 class TransHubIE(InfoExtractor):
     IE_NAME = "transhub"
+    IE_DESC = "TransHub (transhub.to)"
     _VALID_URL = _TRANSHUB_VALID_URL
+
+    _TESTS = [{
+        "url": "https://transhub.to/solo/remigumi-pov-fucks-her-girlfriends-hairy-pussy/",
+        "info_dict": {
+            "id": "remigumi-pov-fucks-her-girlfriends-hairy-pussy",
+            "ext": "mp4",
+            "title": str,
+            "description": "Remigumi POV Fucks Her Girlfriend's Hairy Pussy - TransHub",
+            "thumbnail": r"re:^https?://transhub\.to/wp-content/uploads/.*\.jpg$",
+            "timestamp": 1787680072,
+            "upload_date": "20260825",
+            "categories": ["Solo"],
+            "tags": ["remigumi"],
+            "age_limit": 18,
+        },
+        "params": {
+            "skip_download": True,
+        },
+    }]
 
     def _real_extract(self, url):
         display_id = self._match_id(url)
@@ -635,16 +661,23 @@ class TransHubIE(InfoExtractor):
         info = parse_transhub_html(webpage, url)
         embed_url = info.pop("embed_url")
 
-        info.update({
-            "_type": "url_transparent",
-            "url": embed_url,
-        })
-        if _LULU_URL_RE.match(embed_url):
-            info["ie_key"] = LuluVdoIE.ie_key()
-        elif _STREAMTAPE_URL_RE.match(embed_url):
-            info["ie_key"] = StreamtapeIE.ie_key()
-        elif _DOODSTER_URL_RE.match(embed_url):
-            info["ie_key"] = DoodsterIE.ie_key()
-        elif _VOE_URL_RE.match(embed_url):
-            info["ie_key"] = VoeIE.ie_key()
+        if _BUNNY_URL_RE.match(embed_url):
+            info.update({
+                "_type": "url_transparent",
+                "url": smuggle_url(embed_url, {"Referer": url}),
+                "ie_key": "BunnyCdn",
+            })
+        else:
+            info.update({
+                "_type": "url_transparent",
+                "url": embed_url,
+            })
+            if _LULU_URL_RE.match(embed_url):
+                info["ie_key"] = LuluVdoIE.ie_key()
+            elif _STREAMTAPE_URL_RE.match(embed_url):
+                info["ie_key"] = StreamtapeIE.ie_key()
+            elif _DOODSTER_URL_RE.match(embed_url):
+                info["ie_key"] = DoodsterIE.ie_key()
+            elif _VOE_URL_RE.match(embed_url):
+                info["ie_key"] = VoeIE.ie_key()
         return info
