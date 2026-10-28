@@ -5,7 +5,7 @@ from urllib.parse import urljoin, urlsplit
 
 from yt_dlp.extractor.common import InfoExtractor
 from yt_dlp.networking import HEADRequest
-from yt_dlp.utils import encode_base_n, int_or_none, parse_duration, str_to_int, url_or_none
+from yt_dlp.utils import ExtractorError, encode_base_n, int_or_none, parse_duration, str_to_int, url_or_none
 
 
 _VALID_URL = (
@@ -111,8 +111,13 @@ class EpornerIE(InfoExtractor):
             },
             fatal=False,
         )
-        if not isinstance(video, dict) or video.get("available") is False:
+        if not isinstance(video, dict):
             return []
+        if video.get("available") is False:
+            raise ExtractorError(
+                f"Eporner player API said: {video.get('message') or 'video is unavailable'}",
+                expected=True,
+            )
 
         formats = []
         for kind, sources in (video.get("sources") or {}).items():
