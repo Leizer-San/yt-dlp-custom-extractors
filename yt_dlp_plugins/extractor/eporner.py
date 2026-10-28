@@ -4,7 +4,8 @@ from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit
 
 from yt_dlp.extractor.common import InfoExtractor
-from yt_dlp.utils import int_or_none, parse_duration, str_to_int
+from yt_dlp.networking import HEADRequest
+from yt_dlp.utils import encode_base_n, int_or_none, parse_duration, str_to_int, url_or_none
 
 
 _VALID_URL = (
@@ -88,6 +89,72 @@ class EpornerIE(InfoExtractor):
     IE_NAME = "eporner"
     _VALID_URL = _VALID_URL
 
+    def _extract_player_formats(self, webpage, video_id, display_id, page_url):
+        video_hash = self._search_regex(
+            r"hash\s*[:=]\s*['\"]([\da-f]{32})",
+            webpage, "video hash", default=None)
+        if not video_hash:
+            return []
+
+        api_hash = "".join(
+            encode_base_n(int(video_hash[offset:offset + 8], 16), 36)
+            for offset in range(0, 32, 8))
+        video = self._download_json(
+            f"https://www.eporner.com/xhr/video/{video_id}",
+            display_id,
+            note="Downloading player video sources",
+            query={
+                "hash": api_hash,
+                "device": "generic",
+                "domain": "www.eporner.com",
+                "fallback": "false",
+            },
+            fatal=False,
+        )
+        if not isinstance(video, dict) or video.get("available") is False:
+            return []
+
+        formats = []
+        for kind, sources in (video.get("sources") or {}).items():
+            if not isinstance(sources, dict):
+                continue
+            for format_id, source in sources.items():
+                if not isinstance(source, dict):
+                    continue
+                media_url = url_or_none(source.get("src"))
+                if not media_url:
+                    continue
+                if kind == "hls":
+                    formats.extend(self._extract_m3u8_formats(
+                        media_url, display_id, ext="mp4", m3u8_id="hls",
+                        fatal=False, headers={"Referer": page_url}))
+                    continue
+
+                height = int_or_none(self._search_regex(
+                    r"(\d{3,4})p", format_id, "height", default=None))
+                fps = int_or_none(self._search_regex(
+                    r"(\d+)fps", format_id, "fps", default=None))
+                formats.append({
+                    "url": media_url,
+                    "format_id": format_id,
+                    "height": height,
+                    "fps": fps,
+                    "http_headers": {"Referer": page_url},
+                })
+        return formats
+
+    def _download_links_require_login(self, formats, video_id):
+        if not formats:
+            return False
+        response = self._request_webpage(
+            HEADRequest(formats[0]["url"]),
+            video_id,
+            note="Checking Eporner download link access",
+            errnote=False,
+            fatal=False,
+        )
+        return not response or "/login/" in response.url.lower()
+
     def _real_extract(self, url):
         match = self._match_valid_url(url)
         video_id = match.group("id")
@@ -96,8 +163,12 @@ class EpornerIE(InfoExtractor):
         page_url = urlh.url
 
         formats = _extract_download_formats(webpage, page_url)
+        if self._download_links_require_login(formats, display_id):
+            self.report_warning(
+                "Eporner download links require login; falling back to public player sources")
+            formats = self._extract_player_formats(webpage, video_id, display_id, page_url)
         if not formats:
-            self.raise_no_formats("Could not find MP4 download links in Eporner page", expected=True)
+            self.raise_no_formats("Could not find accessible video formats in Eporner page", expected=True)
 
         title = (
             self._og_search_title(webpage, default=None)
