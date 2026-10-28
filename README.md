@@ -12,6 +12,7 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) custom extractor plugin package for
 - `https://x-tg.tube/models/<slug>/`
 - `https://nsfw247.to/<slug>/`
 - `https://puregirl.tv/post/<id>`
+- `https://www.eporner.com/video-<id>/<slug>/`
 - `https://hornysimp.com.<tld>/<slug>/`
 - `https://luluvids.top/e/<id>`
 - `https://morencius.com/embed/<id>`
@@ -26,6 +27,7 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) custom extractor plugin package for
 - Extracts X-TG KVS player formats and model playlists through `curl-cffi` browser impersonation
 - Extracts NSFW247 FluidPlayer MP4 pages without duplicate `noscript` playlist entries
 - Extracts PureGirl HLS and MP4 posts through the site's public JSON API
+- Extracts Eporner MP4 download links, including AV1 and H.264 variants
 - Extracts HornySimp pages by resolving LuluVids and Morencius embedded stream mirrors
 
 ## Installation
@@ -74,6 +76,10 @@ yt-dlp "https://nsfw247.to/example-video/"
 
 ```bash
 yt-dlp "https://puregirl.tv/post/example-video.00000000-0000-0000-0000-000000000000"
+```
+
+```bash
+yt-dlp "https://www.eporner.com/video-RWd1X6xhbwG/threesome-gone-wrong-part-1/"
 ```
 
 ```bash
