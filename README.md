@@ -27,7 +27,7 @@ A [yt-dlp](https://github.com/yt-dlp/yt-dlp) custom extractor plugin package for
 - Extracts X-TG KVS player formats and model playlists through `curl-cffi` browser impersonation
 - Extracts NSFW247 FluidPlayer MP4 pages without duplicate `noscript` playlist entries
 - Extracts PureGirl HLS and MP4 posts through the site's public JSON API
-- Extracts Eporner MP4 download links, including AV1 and H.264 variants
+- Extracts Eporner MP4 download links, preferring AV1 when available at the same resolution
 - Extracts HornySimp pages by resolving LuluVids and Morencius embedded stream mirrors
 
 ## Installation

@@ -78,6 +78,8 @@ def _extract_download_formats(webpage, page_url):
             "format_id": f"{height}p-{codec}",
             "ext": "mp4",
             "height": height,
+            # Keep resolution as the primary choice, then prefer AV1 at equal res.
+            "quality": height * 2 + int(is_av1),
             "vcodec": codec,
             "http_headers": {"Referer": page_url},
         })
